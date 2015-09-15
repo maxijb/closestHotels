@@ -1,9 +1,16 @@
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.PriorityQueue;
 import java.util.Random;
+
+import com.xeiam.xchart.Chart;
+import com.xeiam.xchart.QuickChart;
+import com.xeiam.xchart.SwingWrapper;
+
+
 
 
 public class ClosestHotels {
@@ -14,16 +21,22 @@ public class ClosestHotels {
 		
 		//Config
 		int k = 10;
-		int n = 500000;
+		int n = 1000000;
 		int maxLat = 90;
 		int maxLong = 180;
 		Random rand = new Random();
 		
+		
+		log(euclideanDistance(new Hotel(2, -179.98871990614697, 1), new Hotel(2, 179.99863582095406, 1), maxLong, true));
+		
+		
+		
 		// Working data
 		Hotel[] hotelsOrig = new Hotel[n];
 		Hotel[] hotels = new Hotel[n];
+		HashMap<Integer, Integer> comparisonsTable = new HashMap<Integer, Integer>();
 		ArrayList<Distance>[] results = new ArrayList[n];
-		long comparisons = 0;
+		Integer comparisons = 0;
 		
 		
 		
@@ -63,47 +76,56 @@ public class ClosestHotels {
 			Hotel next = null;
 			double curDistance;
 			boolean outOfItems = false;
-			
+			comparisons = 0;
+			double normalizedAX;
+			double normalizedBX;
 			//repeat 
 			do {
 				//one more comparison
 				comparisons++;
 				
-				//if in bounds, select the next closest hotel by X within the array bounds
-				if (l < 0 && r < n ) {
-					next = hotels[r++];
-				} else if ( l >= 0 && r >= n) {
-					next = hotels[l--];
-				} else if (l >= 0 && r < n) {
-					next = Math.abs(curHotel.getX() - hotels[l].getX()) < Math.abs(curHotel.getX() - hotels[r].getX()) ? hotels[l--] : hotels[r++];
-				} else {
-					//out of bounds, shoudl exit the loop
+				//if r goes out of bounds start over
+				if (r >= n) r = 0;
+				if (l < 0) l = n-1;
+				
+				
+				//if l and r are togheter
+				if (l == r || l -1 == r) {
 					outOfItems = true;
+					next = null;
+				} else  {
+					normalizedAX = normalizeLong(curHotel);
+					next = Math.abs(normalizedAX - normalizeLong(hotels[l])) < Math.abs(normalizedAX - normalizeLong(hotels[r])) ? hotels[l--] : hotels[r++];
 				}
 				
-				//calculate the real distance
-				curDistance = euclideanDistance(curHotel, next);
-				
-				//if distance is lower than the maximun in the heap
-				if (minDistances.size() < k || curDistance < minDistances.peek().getDistance()) {
+				if (next != null) {
 					
-					//ad this distance to the heap
-					minDistances.add(new Distance(next.getId(), curDistance));
+					//calculate the real distance
+					curDistance = euclideanDistance(curHotel, next);
 					
-					//we dont want ot exceed k size
-					if (minDistances.size() > k) { minDistances.poll(); }
+					//if distance is lower than the maximun in the heap
+					if (minDistances.size() < k || curDistance < minDistances.peek().getDistance()) {
+						
+						//ad this distance to the heap
+						minDistances.add(new Distance(next.getId(), curDistance));
+						
+						//we dont want ot exceed k size
+						if (minDistances.size() > k) { minDistances.poll(); }
+					}
 				}
 			
 			//exit the loop if the next hotel X's distance is greater the max allowed euclidean distance 
 			//AND the heap is complete OR we run out of items 
-			} while ((Math.abs(next.getX() - curHotel.getX()) < minDistances.peek().getDistance() || minDistances.size() < k) && !outOfItems);
+			} while (!outOfItems && (Math.abs(normalizeLong(curHotel) - normalizeLong(next)) < minDistances.peek().getDistance() || minDistances.size() < k));
+			
+			comparisonsTable.put(comparisons, comparisonsTable.containsKey(comparisons) ? comparisonsTable.get(comparisons)+1 : 1);
 			
 			// Copy the heap results to the final results array
 			while(!minDistances.isEmpty()){
 				Distance d = minDistances.poll();
 				results[i].add(d);
 				//Reverse to keep the lower result first
-				Collections.reverse(results[i]);
+//				Collections.reverse(results[i]);
 			}
 			
 			
@@ -116,17 +138,50 @@ public class ClosestHotels {
 		log("..................................................");
 
 		//Print some random examples of resutls
-		logGroup(120000, results, hotels, hotelsOrig);
-		logGroup(310050, results, hotels, hotelsOrig);
-		logGroup(423040, results, hotels, hotelsOrig);
+		logGroup(0, results, hotels, hotelsOrig);
+		logGroup(1, results, hotels, hotelsOrig);
+		logGroup(n-1, results, hotels, hotelsOrig);
+		
+
+		
+		//disaggregate comparisons number data into 2 ordered arrays
+		Integer[] orderedKeys = comparisonsTable.keySet().toArray(new Integer[comparisonsTable.size()]);
+		Arrays.sort(orderedKeys);
+		double[] xKeys = new double[orderedKeys.length];
+		double[] yKeys = new double[orderedKeys.length];
+		for (int i = 0; i < orderedKeys.length; i++) {
+			xKeys[i] = orderedKeys[i];
+			yKeys[i] = comparisonsTable.get(orderedKeys[i]);
+		}
+ 
+	    // Create Chart
+	    Chart chart = QuickChart.getChart("n="+n+" k="+k+" maxLatitude(y)="+maxLat+" maxLong(x)="+maxLong, "Comparisons", "Number of items", "y(x)", xKeys, yKeys);
+	 	    // Show it
+	    new SwingWrapper(chart).displayChart();
+	 
+		
+		
 		
 	}
 	
 	
+	public static double normalizeLong(Hotel a) {
+		return (a.getX() + 360) % 360;
+	}
+	
 	
 	//Calculate eculidean distance
+	public static double euclideanDistance(Hotel a, Hotel b, Integer maxX, boolean loguear) {
+		double normalizedAX = (a.getX() + maxX*2) % (maxX*2);
+		double normalizedBX = (b.getX() + maxX*2) % (maxX*2);
+		
+		if (loguear) { log(normalizedAX + " " + normalizedBX); }
+		return Math.sqrt(Math.pow(normalizeLong(a) - normalizeLong(b), 2) + Math.pow(a.getY() - b.getY(), 2));
+	}
+	
+	
 	public static double euclideanDistance(Hotel a, Hotel b) {
-		return Math.sqrt(Math.pow(a.getX() - b.getX(), 2) + Math.pow(a.getY() - b.getY(), 2));
+		return Math.sqrt(Math.pow(normalizeLong(a) - normalizeLong(b), 2) + Math.pow(a.getY() - b.getY(), 2));
 	}
 	
 	
